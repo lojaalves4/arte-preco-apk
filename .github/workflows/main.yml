@@ -1,4 +1,6 @@
-name: Build APK
+- name: Build APK
+  run: |
+    buildozer -v android debug
 
 on:
   workflow_dispatch:
