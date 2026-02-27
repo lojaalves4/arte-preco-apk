@@ -13,9 +13,16 @@ requirements = python3,kivy
 orientation = portrait
 fullscreen = 0
 
+# Android
 android.api = 33
 android.minapi = 21
 android.ndk_api = 21
+
+# TRAVAS IMPORTANTES (evita preview e aceita licença)
+android.accept_sdk_license = True
+android.build_tools_version = 34.0.0
+android.ndk = 25b
+p4a.branch = stable
 
 [buildozer]
 log_level = 2
