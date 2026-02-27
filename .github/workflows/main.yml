@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install system dependencies (full)
+      - name: Install system dependencies (noble)
         run: |
           sudo apt update
           sudo apt install -y \
@@ -26,7 +26,7 @@ jobs:
             build-essential python3-pip \
             libffi-dev libssl-dev libsqlite3-dev zlib1g-dev \
             pkg-config \
-            libncurses5 libncurses5-dev libncursesw5 libncursesw5-dev \
+            libncurses6 libncursesw6 \
             libstdc++6 \
             libgl1-mesa-dev libgles2-mesa-dev \
             python3-setuptools python3-wheel
@@ -36,20 +36,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install --no-cache-dir buildozer cython
 
-      - name: Force settings + verbose logs + clean
+      - name: Force settings + clean
         run: |
           rm -rf .buildozer || true
           rm -rf ~/.buildozer || true
-
-          # buildozer log mais detalhado
-          if grep -q '^log_level' buildozer.spec; then
-            sed -i 's/^log_level.*/log_level = 2/' buildozer.spec
-          else
-            echo '' >> buildozer.spec
-            echo '[buildozer]' >> buildozer.spec
-            echo 'log_level = 2' >> buildozer.spec
-            echo 'warn_on_root = 0' >> buildozer.spec
-          fi
 
           # força APK
           if grep -q '^android\.package_format' buildozer.spec; then
