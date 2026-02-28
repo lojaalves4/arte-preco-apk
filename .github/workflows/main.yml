@@ -7,17 +7,13 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
-    env:
-      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
-      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
@@ -31,32 +27,44 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            zip unzip \
-            build-essential \
-            libffi-dev libssl-dev \
-            liblzma-dev zlib1g-dev \
-            libncurses5-dev libncursesw5-dev \
-            libreadline-dev libsqlite3-dev \
-            git openjdk-17-jdk
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip wget curl \
+            build-essential pkg-config cmake \
+            libffi-dev libssl-dev zlib1g-dev \
+            libncurses5 libncurses5-dev libstdc++6 \
+            libtool autoconf automake \
+            libgl1-mesa-dev libgles2-mesa-dev
 
       - name: Install Buildozer + deps
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install buildozer cython
+          python -m pip install --upgrade pip
+          # Pins mais seguros para Buildozer/p4a
+          pip install "Cython==0.29.36" "buildozer==1.5.0" "python-for-android==2024.1.21"
 
       - name: Install Android SDK cmdline-tools + Build Tools (no prompt)
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
         run: |
+          set -e
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-          cd "$ANDROID_SDK_ROOT"
-          curl -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-          unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
-          rm cmdline-tools.zip
-          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
 
+          # Baixa o commandline-tools oficial
+          cd "$ANDROID_SDK_ROOT"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d cmdline-tools-tmp
+          rm -f cmdline-tools.zip
+
+          # Move para o lugar que o sdkmanager espera
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+          mv cmdline-tools-tmp/cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
+          rm -rf cmdline-tools-tmp
+
+          # PATH correto (sdkmanager fica aqui)
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
+          # Instala pacotes necessários (NÃO usa RC)
+          sdkmanager --version
           yes | sdkmanager --licenses
 
           sdkmanager \
@@ -65,40 +73,28 @@ jobs:
             "build-tools;33.0.2"
 
       - name: Build APK (debug)
+        env:
+          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
         run: |
+          # buildozer usa ANDROIDSDK/ANDROIDNDK/ANDROIDAPI também, mas o principal é ANDROID_SDK_ROOT
+          export ANDROIDSDK="$ANDROID_SDK_ROOT"
           buildozer -v android debug
-
-      - name: List generated files
-        if: always()
-        run: |
-          echo "== repo root =="
-          ls -la
-          echo "== bin =="
-          ls -la bin || true
-          echo "== buildozer folder =="
-          ls -la .buildozer || true
-          echo "== find apks =="
-          find . -type f -name "*.apk" || true
-          echo "== find logs/txt =="
-          find . -type f \( -name "*.log" -o -name "*buildozer*.txt" -o -name "*.txt" \) || true
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: apk
-          path: |
-            bin/*.apk
-            **/*.apk
-          if-no-files-found: warn
+          path: bin/*.apk
+          if-no-files-found: error
 
       - name: Upload build logs (always)
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: build-logs
           path: |
-            .buildozer/**/*
+            .buildozer/**/logs/**
+            .buildozer/**/*.log
             **/*.log
             **/*buildozer*.txt
           if-no-files-found: warn
