@@ -1,10 +1,3 @@
-name: Build APK
-
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -18,11 +11,21 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Set up Java (Temurin 17)
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
+
+      # ✅ Android SDK pronto (coloca sdkmanager no PATH automaticamente)
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          sdkmanager --version
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
       - name: Install system deps
         run: |
@@ -38,46 +41,10 @@ jobs:
       - name: Install Buildozer + deps
         run: |
           python -m pip install --upgrade pip
-          # Pins mais seguros para Buildozer/p4a
           pip install "Cython==0.29.36" "buildozer==1.5.0" "python-for-android==2024.1.21"
 
-      - name: Install Android SDK cmdline-tools + Build Tools (no prompt)
-        env:
-          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
-        run: |
-          set -e
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
-
-          # Baixa o commandline-tools oficial
-          cd "$ANDROID_SDK_ROOT"
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-          unzip -q cmdline-tools.zip -d cmdline-tools-tmp
-          rm -f cmdline-tools.zip
-
-          # Move para o lugar que o sdkmanager espera
-          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
-          mv cmdline-tools-tmp/cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
-          rm -rf cmdline-tools-tmp
-
-          # PATH correto (sdkmanager fica aqui)
-          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
-
-          # Instala pacotes necessários (NÃO usa RC)
-          sdkmanager --version
-          yes | sdkmanager --licenses
-
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-33" \
-            "build-tools;33.0.2"
-
       - name: Build APK (debug)
-        env:
-          ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
         run: |
-          # buildozer usa ANDROIDSDK/ANDROIDNDK/ANDROIDAPI também, mas o principal é ANDROID_SDK_ROOT
-          export ANDROIDSDK="$ANDROID_SDK_ROOT"
           buildozer -v android debug
 
       - name: Upload APK Artifact
