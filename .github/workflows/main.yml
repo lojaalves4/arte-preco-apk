@@ -9,6 +9,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,53 +22,83 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Set up Java (Temurin 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
       - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             zip unzip \
-            openjdk-17-jdk \
             build-essential \
             libffi-dev libssl-dev \
-            autoconf automake libtool pkg-config \
-            zlib1g-dev \
-            git
+            liblzma-dev zlib1g-dev \
+            libncurses5-dev libncursesw5-dev \
+            libreadline-dev libsqlite3-dev \
+            git openjdk-17-jdk
 
       - name: Install Buildozer + deps
         run: |
-          python -m pip install --upgrade pip
-          pip install buildozer cython
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install buildozer cython
 
-      - name: Install Android SDK (no prompt) + Build Tools
-        env:
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      - name: Install Android SDK cmdline-tools + Build Tools (no prompt)
         run: |
-          sudo mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-          cd /tmp
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-6514223_latest.zip -O cmdline-tools.zip
-          sudo unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
-          sudo mv $ANDROID_SDK_ROOT/cmdline-tools/tools $ANDROID_SDK_ROOT/cmdline-tools/latest
-          sudo chown -R $USER:$USER $ANDROID_SDK_ROOT
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
+          cd "$ANDROID_SDK_ROOT"
+          curl -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip -d "$ANDROID_SDK_ROOT/cmdline-tools"
+          rm cmdline-tools.zip
+          mv "$ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools" "$ANDROID_SDK_ROOT/cmdline-tools/latest"
 
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
           yes | sdkmanager --licenses
 
-          sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2"
 
       - name: Build APK (debug)
-        env:
-          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
           buildozer -v android debug
+
+      - name: List generated files
+        if: always()
+        run: |
+          echo "== repo root =="
+          ls -la
           echo "== bin =="
           ls -la bin || true
+          echo "== buildozer folder =="
+          ls -la .buildozer || true
+          echo "== find apks =="
+          find . -type f -name "*.apk" || true
+          echo "== find logs/txt =="
+          find . -type f \( -name "*.log" -o -name "*buildozer*.txt" -o -name "*.txt" \) || true
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: apk
-          path: bin/*.apk
-          if-no-files-found: error
+          path: |
+            bin/*.apk
+            **/*.apk
+          if-no-files-found: warn
+
+      - name: Upload build logs (always)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-logs
+          path: |
+            .buildozer/**/*
+            **/*.log
+            **/*buildozer*.txt
+          if-no-files-found: warn
